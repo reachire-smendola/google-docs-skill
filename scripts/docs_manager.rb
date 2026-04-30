@@ -10,6 +10,7 @@ require 'googleauth'
 require 'googleauth/stores/file_token_store'
 require 'fileutils'
 require 'json'
+require 'webrick'
 
 # Google Docs Manager - Google CLI Integration for Document Operations
 # Version: 1.0.0
@@ -59,20 +60,8 @@ class DocsManager
     credentials = authorizer.get_credentials(user_id)
 
     if credentials.nil?
-      url = authorizer.get_authorization_url(base_url: 'urn:ietf:wg:oauth:2.0:oob')
-      output_json({
-        status: 'error',
-        error_code: 'AUTH_REQUIRED',
-        message: 'Authorization required. Please visit the URL and enter the code.',
-        auth_url: url,
-        instructions: [
-          '1. Visit the authorization URL',
-          '2. Grant access to Google Docs, Drive, Sheets, Calendar, Contacts, and Gmail',
-          '3. Copy the authorization code',
-          "4. Run: ruby #{__FILE__} auth <code>"
-        ]
-      })
-      exit EXIT_AUTH_ERROR
+      run_auth_flow(authorizer)
+      credentials = authorizer.get_credentials(user_id)
     end
 
     # Auto-refresh expired tokens
@@ -80,36 +69,59 @@ class DocsManager
     credentials
   end
 
-  # Complete OAuth authorization with code
-  def complete_auth(code)
-    client_id = Google::Auth::ClientId.from_file(CREDENTIALS_PATH)
-    token_store = Google::Auth::Stores::FileTokenStore.new(file: TOKEN_PATH)
+  # Run OAuth flow using localhost redirect (replaces deprecated OOB flow).
+  # Opens a temporary WEBrick server to catch the callback, then stores the token.
+  def run_auth_flow(authorizer)
+    port        = 3000
+    redirect    = "http://localhost:#{port}"
+    url         = authorizer.get_authorization_url(base_url: redirect)
+    auth_code   = nil
 
-    authorizer = Google::Auth::UserAuthorizer.new(
-      client_id,
-      [DRIVE_SCOPE, SHEETS_SCOPE, DOCS_SCOPE, CALENDAR_SCOPE, CONTACTS_SCOPE, GMAIL_SCOPE],
-      token_store
+    server = WEBrick::HTTPServer.new(
+      Port: port,
+      Logger: WEBrick::Log.new('/dev/null'),
+      AccessLog: []
     )
 
-    user_id = 'default'
-    credentials = authorizer.get_and_store_credentials_from_code(
-      user_id: user_id,
-      code: code,
-      base_url: 'urn:ietf:wg:oauth:2.0:oob'
+    server.mount_proc '/' do |req, res|
+      if req.query['code']
+        auth_code = req.query['code']
+        res['Content-Type'] = 'text/html'
+        res.body = '<html><body><h2>Authorization successful!</h2><p>You can close this window.</p></body></html>'
+        Thread.new { sleep 1; server.shutdown }
+      else
+        res.body = '<html><body><p>Waiting for authorization...</p></body></html>'
+      end
+    end
+
+    Thread.new { server.start }
+
+    $stderr.puts "\nOpen this URL to authorize:\n\n  #{url}\n\n"
+    $stderr.flush
+
+    timeout = 180
+    start   = Time.now
+    sleep 0.5 until auth_code || (Time.now - start) > timeout
+    server.shutdown rescue nil
+
+    if auth_code.nil?
+      output_json({ status: 'error', error_code: 'AUTH_TIMEOUT', message: 'Timed out waiting for authorization' })
+      exit EXIT_AUTH_ERROR
+    end
+
+    authorizer.get_and_store_credentials_from_code(
+      user_id: 'default',
+      code: auth_code,
+      base_url: redirect
     )
 
     output_json({
       status: 'success',
       message: 'Authorization complete. Token stored successfully.',
-      token_path: TOKEN_PATH,
-      scopes: [DOCS_SCOPE, DRIVE_SCOPE, SHEETS_SCOPE, CALENDAR_SCOPE, CONTACTS_SCOPE, GMAIL_SCOPE]
+      token_path: TOKEN_PATH
     })
   rescue StandardError => e
-    output_json({
-      status: 'error',
-      error_code: 'AUTH_FAILED',
-      message: "Authorization failed: #{e.message}"
-    })
+    output_json({ status: 'error', error_code: 'AUTH_FAILED', message: "Authorization failed: #{e.message}" })
     exit EXIT_AUTH_ERROR
   end
 
@@ -1379,19 +1391,16 @@ if __FILE__ == $PROGRAM_NAME
 
   # Handle auth command separately (doesn't require initialized service)
   if command == 'auth'
-    if ARGV.length < 2
-      puts JSON.pretty_generate({
-        status: 'error',
-        error_code: 'MISSING_CODE',
-        message: 'Authorization code required',
-        usage: "#{File.basename($PROGRAM_NAME)} auth <code>"
-      })
-      exit DocsManager::EXIT_INVALID_ARGS
-    end
-
-    # Create temporary manager just for auth completion
     temp_manager = DocsManager.allocate
-    temp_manager.complete_auth(ARGV[1])
+    client_id    = Google::Auth::ClientId.from_file(DocsManager::CREDENTIALS_PATH)
+    token_store  = Google::Auth::Stores::FileTokenStore.new(file: DocsManager::TOKEN_PATH)
+    authorizer   = Google::Auth::UserAuthorizer.new(
+      client_id,
+      [DocsManager::DRIVE_SCOPE, DocsManager::SHEETS_SCOPE, DocsManager::DOCS_SCOPE,
+       DocsManager::CALENDAR_SCOPE, DocsManager::CONTACTS_SCOPE, DocsManager::GMAIL_SCOPE],
+      token_store
+    )
+    temp_manager.run_auth_flow(authorizer)
     exit DocsManager::EXIT_SUCCESS
   end
 
