@@ -147,6 +147,100 @@ class DocsManager
     exit EXIT_OPERATION_FAILED
   end
 
+  # Read document content AND download all inline images to persistent files for vision analysis
+  def read_with_images(document_id:)
+    require 'net/http'
+    require 'uri'
+
+    document = @docs_service.get_document(document_id)
+    content = extract_text_content(document.body.content)
+
+    image_files = []
+    if document.inline_objects
+      document.inline_objects.each do |object_id, inline_obj|
+        props = inline_obj&.inline_object_properties&.embedded_object
+        next unless props
+
+        content_uri = props.image_properties&.content_uri || props.image_properties&.source_uri
+        next unless content_uri
+
+        credentials = @docs_service.authorization
+        credentials.refresh! if credentials.expired?
+        access_token = credentials.access_token
+
+        uri = URI.parse(content_uri)
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = true
+        request = Net::HTTP::Get.new(uri.request_uri)
+        request['Authorization'] = "Bearer #{access_token}"
+        response = http.request(request)
+
+        next unless response.is_a?(Net::HTTPSuccess)
+
+        ext = case response['content-type']
+              when /png/ then '.png'
+              when /gif/ then '.gif'
+              when /webp/ then '.webp'
+              else '.jpg'
+              end
+
+        img_dir = File.join(Dir.home, '.claude', '.google', 'doc_images')
+        FileUtils.mkdir_p(img_dir)
+        img_path = File.join(img_dir, "#{document_id}_#{object_id}#{ext}")
+        File.binwrite(img_path, response.body)
+
+        # Find position in document body so images can be placed in context
+        position = nil
+        document.body.content.each do |element|
+          next unless element.paragraph
+          element.paragraph.elements&.each do |pe|
+            if pe.inline_object_element&.inline_object_id == object_id
+              position = pe.start_index
+            end
+          end
+        end
+
+        image_files << {
+          object_id: object_id,
+          path: img_path,
+          content_type: response['content-type'],
+          title: props.title,
+          description: props.description,
+          position: position
+        }
+      rescue StandardError => e
+        image_files << { object_id: object_id, error: e.message }
+      end
+    end
+
+    output_json({
+      status: 'success',
+      operation: 'read_with_images',
+      document_id: document.document_id,
+      title: document.title,
+      content: content,
+      revision_id: document.revision_id,
+      images: image_files
+    })
+  rescue Google::Apis::Error => e
+    output_json({
+      status: 'error',
+      error_code: 'API_ERROR',
+      operation: 'read_with_images',
+      message: "Google Docs API error: #{e.message}",
+      details: e.body
+    })
+    exit EXIT_API_ERROR
+  rescue StandardError => e
+    output_json({
+      status: 'error',
+      error_code: 'READ_FAILED',
+      operation: 'read_with_images',
+      message: "Failed to read document: #{e.message}"
+    })
+    exit EXIT_OPERATION_FAILED
+  end
+
   # Get document structure (headings, sections)
   def get_structure(document_id:)
     document = @docs_service.get_document(document_id)
@@ -1330,6 +1424,18 @@ if __FILE__ == $PROGRAM_NAME
 
     manager.get_structure(document_id: ARGV[1])
 
+  when 'read-with-images'
+    if ARGV.length < 2
+      puts JSON.pretty_generate({
+        status: 'error',
+        error_code: 'MISSING_DOCUMENT_ID',
+        message: 'Document ID required'
+      })
+      exit DocsManager::EXIT_INVALID_ARGS
+    end
+
+    manager.read_with_images(document_id: ARGV[1])
+
   when 'insert'
     input = JSON.parse(STDIN.read, symbolize_names: true)
 
@@ -1537,7 +1643,7 @@ if __FILE__ == $PROGRAM_NAME
       status: 'error',
       error_code: 'INVALID_COMMAND',
       message: "Unknown command: #{command}",
-      valid_commands: ['auth', 'read', 'structure', 'insert', 'append', 'replace', 'format', 'page-break', 'create', 'create-from-markdown', 'insert-from-markdown', 'delete', 'insert-image']
+      valid_commands: ['auth', 'read', 'read-with-images', 'structure', 'insert', 'append', 'replace', 'format', 'page-break', 'create', 'create-from-markdown', 'insert-from-markdown', 'delete', 'insert-image']
     })
     usage
     exit DocsManager::EXIT_INVALID_ARGS
