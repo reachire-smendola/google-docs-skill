@@ -3,7 +3,7 @@ name: google-docs
 description: Manage Google Docs and Google Drive with full document operations and file management. Includes Markdown support for creating formatted documents with headings, bold, italic, lists, tables, and checkboxes. Also supports Drive operations (upload, download, share, search).
 category: productivity
 version: 1.2.0
-key_capabilities: create-from-markdown, insert-from-markdown, tables, formatted text, Drive upload/download/share/search
+key_capabilities: read-with-images, create-from-markdown, insert-from-markdown, tables, formatted text, Drive upload/download/share/search
 when_to_use: Document content operations, formatted document creation from Markdown, tables, Drive file management, sharing files
 ---
 
@@ -15,6 +15,7 @@ Manage Google Docs documents and Google Drive files with comprehensive operation
 
 **Google Docs:**
 - Read document content and structure
+- Read document content WITH IMAGES (downloads inline images to disk)
 - Insert and append text
 - Find and replace text
 - Basic text formatting (bold, italic, underline)
@@ -72,6 +73,12 @@ scripts/drive_manager.rb search \
 ```bash
 scripts/docs_manager.rb read <document_id>
 ```
+
+**Read document WITH IMAGES (includes inline images)**:
+```bash
+scripts/docs_manager.rb read-with-images <document_id>
+```
+This downloads all inline images from the document and saves them to `~/.claude/.google/doc_images/`. Returns image paths and positions in the document for correlation with text.
 
 **Get document structure (headings)**:
 ```bash
@@ -337,6 +344,12 @@ echo '{
 scripts/docs_manager.rb read abc123
 ```
 
+### User Says: "Read a Google Doc and include images"
+```bash
+scripts/docs_manager.rb read-with-images abc123
+```
+Use this when the user wants to see images embedded in the document. Images are downloaded to `~/.claude/.google/doc_images/`.
+
 ### User Says: "Create a new document called 'Meeting Notes' with the text 'Attendees: John, Sarah'"
 ```bash
 echo '{
@@ -578,6 +591,7 @@ For creating and managing Excalidraw diagrams, see the `excalidraw-diagrams` ski
 
 **Operations**:
 - `read`: View document content
+- `read-with-images`: View document content AND download inline images to disk
 - `structure`: Get document headings and structure
 - `insert`: Insert plain text at specific index
 - `insert-from-markdown`: Insert formatted markdown content
@@ -700,6 +714,11 @@ For creating and managing Excalidraw diagrams, see the `excalidraw-diagrams` ski
 scripts/docs_manager.rb read <document_id>
 ```
 
+**Read document WITH images** (downloads inline images to `~/.claude/.google/doc_images/`):
+```bash
+scripts/docs_manager.rb read-with-images <document_id>
+```
+
 **Create document from Markdown (RECOMMENDED)**:
 ```bash
 echo '{"title":"My Doc","markdown":"# Heading\n\nParagraph with **bold**."}' | scripts/docs_manager.rb create-from-markdown
@@ -785,6 +804,7 @@ echo '{"document_id":"abc123","image_url":"https://example.com/image.png"}' | sc
 
 ## Version History
 
+- **1.3.0** (2026-04-30) - Added `read-with-images` command documentation: downloads inline images to `~/.claude/.google/doc_images/` with position data for correlation.
 - **1.2.0** (2025-12-25) - Added markdown support documentation: `create-from-markdown`, `insert-from-markdown`, `insert-table` commands. Supports headings, bold, italic, code, lists, checkboxes, tables, and horizontal rules.
 - **1.1.0** (2025-12-20) - Added Google Drive operations via drive_manager.rb: upload, download, search, list, share, move, copy, delete, folder management. Integrated with excalidraw-diagrams skill for diagram workflows.
 - **1.0.0** (2025-11-10) - Initial Google Docs skill with full document operations: read, create, insert, append, replace, format, page breaks, structure analysis. Shared OAuth token with email, calendar, contacts, drive, and sheets skills.
