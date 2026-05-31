@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require_relative '_bootstrap'
+
 require 'google/apis/docs_v1'
 require 'google/apis/drive_v3'
 require 'google/apis/sheets_v4'
@@ -25,6 +27,7 @@ class DocsManager
   GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
 
   CONFIG_DIR = ENV['GOOGLE_SKILL_CONFIG_DIR'] || File.join(Dir.home, '.google-docs-skill')
+  FileUtils.mkdir_p(CONFIG_DIR)
   CREDENTIALS_PATH = File.join(CONFIG_DIR, 'client_secret.json')
   TOKEN_PATH = File.join(CONFIG_DIR, 'token.json')
 
@@ -121,6 +124,8 @@ class DocsManager
       message: 'Authorization complete. Token stored successfully.',
       token_path: TOKEN_PATH
     })
+
+    puts "\nAuthorization successful — you can now use all Google Docs skill commands."
   rescue StandardError => e
     output_json({ status: 'error', error_code: 'AUTH_FAILED', message: "Authorization failed: #{e.message}" })
     exit EXIT_AUTH_ERROR
@@ -1269,6 +1274,30 @@ class DocsManager
   def output_json(data)
     puts JSON.pretty_generate(data)
   end
+
+  # Check if OAuth credentials are configured
+  def self.credentials_configured?
+    File.exist?(CREDENTIALS_PATH)
+  end
+
+  def self.output_json_static(data)
+    puts JSON.pretty_generate(data)
+  end
+
+  # Auth error message when credentials are missing — tells agent/user to initiate OAuth setup
+  def self.missing_credentials_error
+    output_json_static({
+      status: 'error',
+      error_code: 'MISSING_CREDENTIALS',
+      message: 'OAuth not configured. This skill requires Google OAuth credentials.',
+      expected_path: CREDENTIALS_PATH,
+      action_required: [
+        'Step 1: Run ruby scripts/setup_auth.rb to create OAuth credentials',
+        'Step 2: Run ruby scripts/docs_manager.rb auth to complete authorization'
+      ]
+    })
+    exit EXIT_AUTH_ERROR
+  end
 end
 
 # CLI Interface
@@ -1392,6 +1421,7 @@ if __FILE__ == $PROGRAM_NAME
 
   # Handle auth command separately (doesn't require initialized service)
   if command == 'auth'
+    DocsManager.missing_credentials_error unless DocsManager.credentials_configured?
     temp_manager = DocsManager.allocate
     client_id    = Google::Auth::ClientId.from_file(DocsManager::CREDENTIALS_PATH)
     token_store  = Google::Auth::Stores::FileTokenStore.new(file: DocsManager::TOKEN_PATH)
@@ -1405,7 +1435,12 @@ if __FILE__ == $PROGRAM_NAME
     exit DocsManager::EXIT_SUCCESS
   end
 
-  # For all other commands, create manager (which requires authorization)
+  # All other commands require OAuth credentials
+  unless DocsManager.credentials_configured?
+    DocsManager.missing_credentials_error
+  end
+
+  # Create manager (which requires authorization)
   manager = DocsManager.new
 
   case command

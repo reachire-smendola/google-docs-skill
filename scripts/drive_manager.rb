@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require_relative '_bootstrap'
+
 require 'google/apis/drive_v3'
 require 'googleauth'
 require 'googleauth/stores/file_token_store'
@@ -20,6 +22,7 @@ class DriveManager
   GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
 
   CONFIG_DIR = ENV['GOOGLE_SKILL_CONFIG_DIR'] || File.join(Dir.home, '.google-docs-skill')
+  FileUtils.mkdir_p(CONFIG_DIR)
   CREDENTIALS_PATH = File.join(CONFIG_DIR, 'client_secret.json')
   TOKEN_PATH = File.join(CONFIG_DIR, 'token.json')
 
@@ -38,6 +41,20 @@ class DriveManager
 
   # Authorize using shared OAuth token
   def authorize
+    unless File.exist?(CREDENTIALS_PATH)
+      output_json({
+        status: 'error',
+        error_code: 'MISSING_CREDENTIALS',
+        message: 'OAuth not configured. This skill requires Google OAuth credentials.',
+        expected_path: CREDENTIALS_PATH,
+        action_required: [
+          'Step 1: Run ruby scripts/setup_auth.rb to create OAuth credentials',
+          'Step 2: Run ruby scripts/docs_manager.rb auth to complete authorization'
+        ]
+      })
+      exit EXIT_AUTH_ERROR
+    end
+
     client_id = Google::Auth::ClientId.from_file(CREDENTIALS_PATH)
     token_store = Google::Auth::Stores::FileTokenStore.new(file: TOKEN_PATH)
 

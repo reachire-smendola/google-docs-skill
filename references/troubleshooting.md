@@ -489,8 +489,8 @@ Ruby gem errors may provide additional context:
 # Check Ruby gem installation
 gem list | grep google-apis
 
-# Verify required gems installed
-gem install google-apis-drive_v3 google-apis-sheets_v4 google-apis-docs_v1 googleauth
+# Verify vendored gems exist
+ls vendor/bundle/ruby/*/gems/ | grep google-apis
 ```
 
 ### Verify API Enablement
