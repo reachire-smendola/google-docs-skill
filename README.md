@@ -1,6 +1,6 @@
-# Google Docs Skill for Claude Code
+# Google Docs Skill
 
-A Claude Code skill for managing Google Docs and Google Drive with comprehensive document and file operations.
+An agent skill for managing Google Docs and Google Drive with comprehensive document and file operations.
 
 ## Features
 
@@ -23,14 +23,14 @@ A Claude Code skill for managing Google Docs and Google Drive with comprehensive
 
 ## Installation
 
-Add this skill to your Claude Code configuration:
+Add this skill to your agent configuration:
 
 ```bash
 # Clone to your skills directory
-git clone https://github.com/robtaylor/google-docs-skill.git ~/.claude/skills/google-docs
+git clone https://github.com/robtaylor/google-docs-skill.git ~/.agents/skills/google-docs
 
-# Or add as submodule to your claude-config
-cd ~/.claude
+# Or add as submodule to your agent config
+cd ~/.agents
 git submodule add https://github.com/robtaylor/google-docs-skill.git skills/google-docs
 ```
 
@@ -38,7 +38,7 @@ git submodule add https://github.com/robtaylor/google-docs-skill.git skills/goog
 
 1. **Create Google Cloud Project** and enable the Docs and Drive APIs
 2. **Create OAuth 2.0 credentials** (Desktop application type)
-3. **Download credentials** and save as `~/.claude/.google/client_secret.json`
+3. **Download credentials** and save as `~/.google-docs-skill/client_secret.json`
 4. **Run any command** - the script will prompt for authorization
 
 The OAuth token is shared with other Google skills (Sheets, Calendar, Gmail, etc.).

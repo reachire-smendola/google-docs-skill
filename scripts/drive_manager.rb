@@ -19,8 +19,9 @@ class DriveManager
   CONTACTS_SCOPE = 'https://www.googleapis.com/auth/contacts'
   GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
 
-  CREDENTIALS_PATH = File.join(Dir.home, '.claude', '.google', 'client_secret.json')
-  TOKEN_PATH = File.join(Dir.home, '.claude', '.google', 'token.json')
+  CONFIG_DIR = ENV['GOOGLE_SKILL_CONFIG_DIR'] || File.join(Dir.home, '.google-docs-skill')
+  CREDENTIALS_PATH = File.join(CONFIG_DIR, 'client_secret.json')
+  TOKEN_PATH = File.join(CONFIG_DIR, 'token.json')
 
   # Exit codes
   EXIT_SUCCESS = 0
@@ -31,7 +32,7 @@ class DriveManager
 
   def initialize
     @drive_service = Google::Apis::DriveV3::DriveService.new
-    @drive_service.client_options.application_name = 'Claude Drive Skill'
+    @drive_service.client_options.application_name = 'Google Drive Skill'
     @drive_service.authorization = authorize
   end
 

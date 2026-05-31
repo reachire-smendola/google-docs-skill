@@ -78,7 +78,7 @@ scripts/docs_manager.rb read <document_id>
 ```bash
 scripts/docs_manager.rb read-with-images <document_id>
 ```
-This downloads all inline images from the document and saves them to `~/.claude/.google/doc_images/`. Returns image paths and positions in the document for correlation with text.
+This downloads all inline images from the document and saves them to `~/.google-docs-skill/doc_images/`. Returns image paths and positions in the document for correlation with text.
 
 **Get document structure (headings)**:
 ```bash
@@ -348,7 +348,7 @@ scripts/docs_manager.rb read abc123
 ```bash
 scripts/docs_manager.rb read-with-images abc123
 ```
-Use this when the user wants to see images embedded in the document. Images are downloaded to `~/.claude/.google/doc_images/`.
+Use this when the user wants to see images embedded in the document. Images are downloaded to `~/.google-docs-skill/doc_images/`.
 
 ### User Says: "Create a new document called 'Meeting Notes' with the text 'Attendees: John, Sarah'"
 ```bash
@@ -562,7 +562,7 @@ For creating and managing Excalidraw diagrams, see the `excalidraw-diagrams` ski
 
 **Shared with Other Google Skills**:
 - Uses same OAuth credentials and token
-- Located at: `~/.claude/.google/client_secret.json` and `~/.claude/.google/token.json`
+- Located at: `~/.google-docs-skill/client_secret.json` and `~/.google-docs-skill/token.json`
 - Shares token with email, calendar, contacts, drive, and sheets skills
 - Requires Documents, Drive, Sheets, Calendar, Contacts, and Gmail API scopes
 
@@ -714,7 +714,7 @@ For creating and managing Excalidraw diagrams, see the `excalidraw-diagrams` ski
 scripts/docs_manager.rb read <document_id>
 ```
 
-**Read document WITH images** (downloads inline images to `~/.claude/.google/doc_images/`):
+**Read document WITH images** (downloads inline images to `~/.google-docs-skill/doc_images/`):
 ```bash
 scripts/docs_manager.rb read-with-images <document_id>
 ```
@@ -804,7 +804,7 @@ echo '{"document_id":"abc123","image_url":"https://example.com/image.png"}' | sc
 
 ## Version History
 
-- **1.3.0** (2026-04-30) - Added `read-with-images` command documentation: downloads inline images to `~/.claude/.google/doc_images/` with position data for correlation.
+- **1.3.0** (2026-04-30) - Added `read-with-images` command documentation: downloads inline images to `~/.google-docs-skill/doc_images/` with position data for correlation.
 - **1.2.0** (2025-12-25) - Added markdown support documentation: `create-from-markdown`, `insert-from-markdown`, `insert-table` commands. Supports headings, bold, italic, code, lists, checkboxes, tables, and horizontal rules.
 - **1.1.0** (2025-12-20) - Added Google Drive operations via drive_manager.rb: upload, download, search, list, share, move, copy, delete, folder management. Integrated with excalidraw-diagrams skill for diagram workflows.
 - **1.0.0** (2025-11-10) - Initial Google Docs skill with full document operations: read, create, insert, append, replace, format, page breaks, structure analysis. Shared OAuth token with email, calendar, contacts, drive, and sheets skills.

@@ -30,13 +30,13 @@ All three Google skills use standardized exit codes:
 **Root Cause**: OAuth credentials file not present at expected location.
 
 **Solution Steps**:
-1. Verify file exists: `ls ~/.claude/.google/client_secret.json`
+1. Verify file exists: `ls ~/.google-docs-skill/client_secret.json`
 2. If missing, download OAuth credentials from Google Cloud Console:
    - Go to [Google Cloud Console](https://console.cloud.google.com/)
    - Navigate to APIs & Services > Credentials
    - Create OAuth 2.0 Client ID (Desktop application)
-   - Download JSON and save as `~/.claude/.google/client_secret.json`
-3. Ensure file has correct permissions: `chmod 600 ~/.claude/.google/client_secret.json`
+   - Download JSON and save as `~/.google-docs-skill/client_secret.json`
+3. Ensure file has correct permissions: `chmod 600 ~/.google-docs-skill/client_secret.json`
 
 **Prevention**: Keep backup of `client_secret.json` in secure location.
 
@@ -66,7 +66,7 @@ All three Google skills use standardized exit codes:
 2. Check OAuth consent screen is configured
 3. Verify redirect URI is configured: `http://localhost:8080`
 4. Download fresh credentials from Google Cloud Console
-5. Delete existing token: `rm ~/.claude/.google/token.json`
+5. Delete existing token: `rm ~/.google-docs-skill/token.json`
 6. Run any Google skill operation to trigger re-authorization
 
 **Prevention**: Don't manually edit `client_secret.json` file.
@@ -87,10 +87,10 @@ All three Google skills use standardized exit codes:
 **Root Cause**: Refresh token expired or revoked.
 
 **Solution Steps**:
-1. Delete expired token: `rm ~/.claude/.google/token.json`
+1. Delete expired token: `rm ~/.google-docs-skill/token.json`
 2. Run any Google skill operation to trigger full re-authorization flow
 3. Complete OAuth authorization in browser when prompted
-4. Verify new token created: `ls -lh ~/.claude/.google/token.json`
+4. Verify new token created: `ls -lh ~/.google-docs-skill/token.json`
 
 **Prevention**:
 - Don't manually edit `token.json`
@@ -113,7 +113,7 @@ All three Google skills use standardized exit codes:
 **Root Cause**: Token was created with fewer scopes than currently required.
 
 **Solution Steps**:
-1. Delete token to force full re-authorization: `rm ~/.claude/.google/token.json`
+1. Delete token to force full re-authorization: `rm ~/.google-docs-skill/token.json`
 2. Run operation again - script will request all required scopes
 3. Carefully review scope list in OAuth consent screen
 4. Authorize all requested scopes
@@ -141,12 +141,12 @@ All three Google skills use standardized exit codes:
 1. Verify file ID is correct (long alphanumeric string, not file name)
 2. Check file exists with search:
    ```bash
-   ~/.claude/skills/google-drive/scripts/drive_manager.rb search \
+   ~/.agents/skills/google-drive/scripts/drive_manager.rb search \
      --query "name='Your File Name'"
    ```
 3. Verify you have access to the file:
    ```bash
-   ~/.claude/skills/google-drive/scripts/drive_manager.rb list-permissions \
+   ~/.agents/skills/google-drive/scripts/drive_manager.rb list-permissions \
      --file-id "FILE_ID"
    ```
 4. If file is shared, ensure it's shared with your authenticated account
@@ -171,13 +171,13 @@ All three Google skills use standardized exit codes:
 **Solution Steps**:
 1. Check current permissions:
    ```bash
-   ~/.claude/skills/google-drive/scripts/drive_manager.rb list-permissions \
+   ~/.agents/skills/google-drive/scripts/drive_manager.rb list-permissions \
      --file-id "FILE_ID"
    ```
 2. If you're not the owner, request permission from file owner
 3. If you are the owner but using different account, share to authenticated account:
    ```bash
-   ~/.claude/skills/google-drive/scripts/drive_manager.rb share \
+   ~/.agents/skills/google-drive/scripts/drive_manager.rb share \
      --file-id "FILE_ID" \
      --email "your-authenticated-email@gmail.com" \
      --role "writer"
@@ -204,7 +204,7 @@ All three Google skills use standardized exit codes:
 1. Get spreadsheet metadata to see available sheets:
    ```bash
    echo '{"spreadsheet_id":"SPREADSHEET_ID"}' | \
-     ~/.claude/skills/google-sheets/scripts/sheets_manager.rb metadata
+     ~/.agents/skills/google-sheets/scripts/sheets_manager.rb metadata
    ```
 2. Use exact sheet name (case-sensitive) from metadata
 3. Verify A1 notation syntax: `SheetName!A1:B10`
@@ -233,7 +233,7 @@ All three Google skills use standardized exit codes:
 **Solution Steps**:
 1. Read document to get current structure:
    ```bash
-   ~/.claude/skills/google-docs/scripts/docs_manager.rb structure "DOCUMENT_ID"
+   ~/.agents/skills/google-docs/scripts/docs_manager.rb structure "DOCUMENT_ID"
    ```
 2. Use `append` operation instead of `insert` for adding to end
 3. Calculate correct indices based on content length
@@ -459,7 +459,7 @@ Verify OAuth flow works:
 
 ```bash
 # Delete token
-rm ~/.claude/.google/token.json
+rm ~/.google-docs-skill/token.json
 
 # Run simple operation
 drive_manager.rb list
@@ -467,7 +467,7 @@ drive_manager.rb list
 # Should prompt for authorization
 # Complete OAuth flow in browser
 # Verify token created
-ls -lh ~/.claude/.google/token.json
+ls -lh ~/.google-docs-skill/token.json
 ```
 
 ### Validate File IDs

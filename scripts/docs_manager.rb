@@ -24,8 +24,9 @@ class DocsManager
   CONTACTS_SCOPE = Google::Apis::PeopleV1::AUTH_CONTACTS
   GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
 
-  CREDENTIALS_PATH = File.join(Dir.home, '.claude', '.google', 'client_secret.json')
-  TOKEN_PATH = File.join(Dir.home, '.claude', '.google', 'token.json')
+  CONFIG_DIR = ENV['GOOGLE_SKILL_CONFIG_DIR'] || File.join(Dir.home, '.google-docs-skill')
+  CREDENTIALS_PATH = File.join(CONFIG_DIR, 'client_secret.json')
+  TOKEN_PATH = File.join(CONFIG_DIR, 'token.json')
 
   # Exit codes
   EXIT_SUCCESS = 0
@@ -36,11 +37,11 @@ class DocsManager
 
   def initialize
     @docs_service = Google::Apis::DocsV1::DocsService.new
-    @docs_service.client_options.application_name = 'Claude Docs Skill'
+    @docs_service.client_options.application_name = 'Google Docs Skill'
     @docs_service.authorization = authorize
 
     @drive_service = Google::Apis::DriveV3::DriveService.new
-    @drive_service.client_options.application_name = 'Claude Docs Skill'
+    @drive_service.client_options.application_name = 'Google Docs Skill'
     @drive_service.authorization = authorize
   end
 
@@ -196,7 +197,7 @@ class DocsManager
               else '.jpg'
               end
 
-        img_dir = File.join(Dir.home, '.claude', '.google', 'doc_images')
+        img_dir = File.join(CONFIG_DIR, 'doc_images')
         FileUtils.mkdir_p(img_dir)
         img_path = File.join(img_dir, "#{document_id}_#{object_id}#{ext}")
         File.binwrite(img_path, response.body)
