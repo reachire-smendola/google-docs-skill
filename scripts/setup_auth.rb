@@ -9,13 +9,23 @@ require_relative '_bootstrap'
 
 require 'fileutils'
 require 'json'
+require 'ansi/code'
 
 CONFIG_DIR  = ENV['GOOGLE_SKILL_CONFIG_DIR'] || File.join(Dir.home, '.google-docs-skill')
 FileUtils.mkdir_p(CONFIG_DIR)
 CREDS_PATH  = File.join(CONFIG_DIR, 'client_secret.json')
 TOKEN_PATH  = File.join(CONFIG_DIR, 'token.json')
 
-PROJECT_CONSOLE = 'https://console.cloud.google.com/'
+PROJECT_CONSOLE   = 'https://console.cloud.google.com/'
+PROJECT_CREATE    = 'https://console.cloud.google.com/projectcreate'
+API_DOCS          = 'https://console.cloud.google.com/apis/library/docs.googleapis.com'
+API_DRIVE         = 'https://console.cloud.google.com/apis/library/drive.googleapis.com'
+API_SHEETS        = 'https://console.cloud.google.com/apis/library/sheets.googleapis.com'
+API_CALENDAR      = 'https://console.cloud.google.com/apis/library/calendar-json.googleapis.com'
+API_PEOPLE        = 'https://console.cloud.google.com/apis/library/people.googleapis.com'
+API_GMAIL         = 'https://console.cloud.google.com/apis/library/gmail.googleapis.com'
+OAUTH_CONSENT     = 'https://console.cloud.google.com/apis/credentials/consent'
+CREDENTIALS_PAGE  = 'https://console.cloud.google.com/apis/credentials'
 
 # ---------------------------------------------------------------------------
 def header(text)
@@ -31,18 +41,17 @@ def step(number, title)
   puts
 end
 
-def prompt(message)
-  print "#{message} "
-  $stdin.gets
-end
-
-def wait_for_enter(message = 'Press Enter when done...')
-  print "#{message} "
+def prompt(message = "Press ENTER to continue")
+  print "#{ANSI.cyan { message }}: "
   $stdin.gets
 end
 
 def divider
   puts '-' * 70
+end
+
+def link(url)
+  ANSI.blue { ANSI.underline { url } }
 end
 
 # ---------------------------------------------------------------------------
@@ -75,6 +84,7 @@ skill_dir = File.expand_path('..', __dir__)
 vendor_gems = File.join(skill_dir, 'vendor', 'bundle')
 if Dir.exist?(vendor_gems)
   puts 'vendored gems found.'
+  puts ''
 else
   puts 'vendored gems not found.'
   puts
@@ -83,7 +93,7 @@ else
   exit 1
 end
 
-wait_for_enter("\nReady? Press Enter to begin...")
+prompt("Press Enter to begin")
 
 # ---------------------------------------------------------------------------
 # Step 1: Create or select a Google Cloud project
@@ -92,97 +102,91 @@ step(1, 'Open Google Cloud Console')
 puts <<~TEXT
   Open this URL in your browser:
 
-    #{PROJECT_CONSOLE}
+    #{link(PROJECT_CONSOLE)}
 
   • Sign in with your Google account if needed
   • Create a NEW project, or select an existing one from the dropdown
     (top of the page, next to "Google Cloud" logo)
 
-  If creating a new project:
-    • Click "New Project"
+  To create a new project, open:
+
+    #{link(PROJECT_CREATE)}
+
     • Give it a name, e.g. "Google Docs CLI"
     • Click "Create"
 
 TEXT
-wait_for_enter
+prompt
 
 # ---------------------------------------------------------------------------
 # Step 2: Enable the APIs
 # ---------------------------------------------------------------------------
 step(2, 'Enable Required APIs')
 puts <<~TEXT
-  In the Google Cloud Console, navigate to:
+  Open each URL below and click the blue "ENABLE" button:
 
-    APIs & Services  →  Library
-
-  (Use the hamburger menu ☰ in the top-left corner)
-
-  Search for and ENABLE each of these APIs:
-
-    1. Google Docs API
-    2. Google Drive API
-    3. Google Sheets API
-    4. Google Calendar API
-    5. People API
-    6. Gmail API
-
-  For each one: click its entry, then click the blue "ENABLE" button.
+    Google Docs API:      #{link(API_DOCS)}
+    Google Drive API:     #{link(API_DRIVE)}
+    Google Sheets API:    #{link(API_SHEETS)}
+    Google Calendar API:  #{link(API_CALENDAR)}
+    People API:           #{link(API_PEOPLE)}
+    Gmail API:            #{link(API_GMAIL)}
 
 TEXT
-wait_for_enter('All 6 APIs enabled? Press Enter...')
+prompt('All 6 APIs enabled? Press Enter to continue')
 
 # ---------------------------------------------------------------------------
 # Step 3: Configure OAuth consent screen
 # ---------------------------------------------------------------------------
 step(3, 'Configure OAuth Consent Screen')
 puts <<~TEXT
-  Navigate to:
+  Open this URL:
 
-    APIs & Services  →  OAuth consent screen
+    #{link(OAUTH_CONSENT)}
 
-  Part A — User Type:
+  #{ANSI.bold { ANSI.underline { 'Part A — User Type:' } }}
     • Choose "External" and click "Create"
 
-  Part B — App Information:
+  #{ANSI.bold { ANSI.underline { 'Part B — App Information:' } }}
     • App name:  Google Docs CLI
     • User support email:  your email address
     • Developer contact email:  your email address
     • Leave the app logo, homepage, privacy policy, ToS links empty
     • Click "Save and Continue"
 
-  Part C — Scopes:
+  #{ANSI.bold { ANSI.underline { 'Part C — Scopes:' } }}
     • Nothing to configure — click "Save and Continue"
 
-  Part D — Test Users:
+  #{ANSI.bold { ANSI.underline { 'Part D — Test Users:' } }}
     • Nothing to configure — click "Save and Continue"
     • Review and click "Back to Dashboard"
 
 TEXT
-wait_for_enter
+prompt
 
 # ---------------------------------------------------------------------------
 # Step 4: Create OAuth client credentials
 # ---------------------------------------------------------------------------
 step(4, 'Create OAuth Client Credentials')
 puts <<~TEXT
-  Navigate to:
+  Open this URL:
 
-    APIs & Services  →  Credentials
+    #{link(CREDENTIALS_PAGE)}
 
-  • Click "+ CREATE CREDENTIALS" (top of page)
-  • Choose "OAuth client ID"
+  • Click "#{ANSI.bold { '+ CREATE CREDENTIALS' }}" (top of page)
+  • Choose "#{ANSI.bold { 'OAuth client ID' }}"
 
   On the form:
-    • Application type:  Desktop application
-    • Name:  CLI Desktop Client
-    • Click "Create"
+    • Application type:  #{ANSI.bold { 'Desktop application' }}
+    • Name:  #{ANSI.bold { 'Google Docs Skill for AI agents' }}
+    • Click "#{ANSI.bold { 'Create' }}"
 
   A dialog will appear with your Client ID and Client Secret.
 
   ⚠  DO NOT close this dialog yet — you need to download the JSON.
 
 TEXT
-wait_for_enter
+prompt
 
 # ---------------------------------------------------------------------------
 # Step 5: Save the credentials
@@ -205,7 +209,7 @@ puts <<~TEXT
 TEXT
 
 loop do
-  wait_for_enter("File saved at #{CREDS_PATH}? Press Enter to verify...")
+  prompt("File saved at #{CREDS_PATH}? Press Enter to verify")
 
   if File.exist?(CREDS_PATH)
     puts "  ✓ Credentials file found."
@@ -230,7 +234,6 @@ puts <<~TEXT
     3. Google will ask you to sign in and grant permissions
     4. The callback is handled automatically — no code to copy-paste
 
-  Ready?
 TEXT
 
 answer = prompt("Run auth flow now? [Y/n]")

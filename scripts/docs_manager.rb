@@ -13,6 +13,8 @@ require 'googleauth/stores/file_token_store'
 require 'fileutils'
 require 'json'
 require 'webrick'
+require 'socket'
+require 'ansi/code'
 
 # Google Docs Manager - Google CLI Integration for Document Operations
 # Version: 1.0.0
@@ -73,10 +75,20 @@ class DocsManager
     credentials
   end
 
+  def find_free_port(start: 3000)
+    (start..start + 20).each do |port|
+      TCPServer.new('127.0.0.1', port).close
+      return port
+    rescue Errno::EADDRINUSE
+      next
+    end
+    raise 'No free port found in range 3000..3020'
+  end
+
   # Run OAuth flow using localhost redirect (replaces deprecated OOB flow).
   # Opens a temporary WEBrick server to catch the callback, then stores the token.
   def run_auth_flow(authorizer)
-    port        = 3000
+    port        = find_free_port
     redirect    = "http://localhost:#{port}"
     url         = authorizer.get_authorization_url(base_url: redirect)
     auth_code   = nil
@@ -100,7 +112,7 @@ class DocsManager
 
     Thread.new { server.start }
 
-    $stderr.puts "\nOpen this URL to authorize:\n\n  #{url}\n\n"
+    $stderr.puts "\nOpen this URL to authorize:\n\n  #{ANSI.blue { ANSI.underline { url } }}\n\n"
     $stderr.flush
 
     timeout = 180
