@@ -3,7 +3,7 @@ name: google-docs
 description: Manage Google Docs and Google Drive with full document operations and file management. Includes Markdown support for creating formatted documents with headings, bold, italic, lists, tables, and checkboxes. Also supports Drive operations (upload, download, share, search).
 category: productivity
 version: 1.4.0
-key_capabilities: read-with-images, read-ranges, create-from-markdown, insert-from-markdown, tables, formatted text, highlights, Drive upload/download/share/search
+key_capabilities: read-with-images, read-ranges, create-from-markdown, insert-from-markdown, tables, formatted text, highlights, text colors, Drive upload/download/share/search
 when_to_use: Document content operations, formatted document creation from Markdown, tables, Drive file management, sharing files
 ---
 
@@ -19,7 +19,7 @@ Manage Google Docs documents and Google Drive files with comprehensive operation
 - Read paragraph ranges with Google Docs indices for annotation
 - Insert and append text
 - Find and replace text
-- Basic text formatting (bold, italic, underline, highlight)
+- Basic text formatting (bold, italic, underline, highlight, text color)
 - Insert page breaks
 - Create new documents
 - Delete content ranges
@@ -245,11 +245,32 @@ echo '{
 }' | scripts/docs_manager.rb format
 ```
 
+**Color text**:
+```bash
+echo '{
+  "document_id": "abc123",
+  "start_index": 200,
+  "end_index": 240,
+  "color": "blue"
+}' | scripts/docs_manager.rb format
+```
+
+**Clear text color**:
+```bash
+echo '{
+  "document_id": "abc123",
+  "start_index": 200,
+  "end_index": 240,
+  "color": null
+}' | scripts/docs_manager.rb format
+```
+
 **Formatting Options**:
 - `bold`: true/false
 - `italic`: true/false
 - `underline`: true/false
 - `highlight`: `yellow`, `blue`, `green`, `pink`, `gray`, or false/null to clear
+- `color`: `blue`, `green`, `red`, `orange`, `gray`, or false/null to clear
 - All options are independent and can be combined
 
 ### 6. Page Breaks
@@ -741,7 +762,7 @@ ruby scripts/setup_auth.rb
 - `insert-from-markdown`: Insert formatted markdown content
 - `append`: Append text to end
 - `replace`: Find and replace text
-- `format`: Apply text formatting (bold, italic, underline, highlight)
+- `format`: Apply text formatting (bold, italic, underline, highlight, text color)
 - `page-break`: Insert page break
 - `create`: Create new document (plain text)
 - `create-from-markdown`: Create document with formatted markdown
@@ -908,9 +929,19 @@ echo '{"document_id":"abc123","start_index":1,"end_index":50,"bold":true}' | scr
 echo '{"document_id":"abc123","start_index":1,"end_index":50,"highlight":"yellow"}' | scripts/docs_manager.rb format
 ```
 
+**Color text**:
+```bash
+echo '{"document_id":"abc123","start_index":1,"end_index":50,"color":"blue"}' | scripts/docs_manager.rb format
+```
+
 **Clear highlight**:
 ```bash
 echo '{"document_id":"abc123","start_index":1,"end_index":50,"highlight":false}' | scripts/docs_manager.rb format
+```
+
+**Clear text color**:
+```bash
+echo '{"document_id":"abc123","start_index":1,"end_index":50,"color":null}' | scripts/docs_manager.rb format
 ```
 
 **Get document structure**:
@@ -963,7 +994,7 @@ echo '{"document_id":"abc123","image_url":"https://example.com/image.png"}' | sc
 
 ## Version History
 
-- **1.4.0** (2026-06-08) - Added `read-ranges` and `format` highlight support for yellow, blue, green, pink, gray, and clearing highlights.
+- **1.4.0** (2026-06-08) - Added `read-ranges` and `format` highlight/text color support, including clearing highlights and text colors.
 - **1.3.0** (2026-04-30) - Added `read-with-images` command documentation: downloads inline images to `~/.google-docs-skill/doc_images/` with position data for correlation.
 - **1.2.0** (2025-12-25) - Added markdown support documentation: `create-from-markdown`, `insert-from-markdown`, `insert-table` commands. Supports headings, bold, italic, code, lists, checkboxes, tables, and horizontal rules.
 - **1.1.0** (2025-12-20) - Added Google Drive operations via drive_manager.rb: upload, download, search, list, share, move, copy, delete, folder management. Integrated with excalidraw-diagrams skill for diagram workflows.
