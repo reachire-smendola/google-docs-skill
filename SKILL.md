@@ -2,8 +2,8 @@
 name: google-docs
 description: Manage Google Docs and Google Drive with full document operations and file management. Includes Markdown support for creating formatted documents with headings, bold, italic, lists, tables, and checkboxes. Also supports Drive operations (upload, download, share, search).
 category: productivity
-version: 1.2.0
-key_capabilities: read-with-images, create-from-markdown, insert-from-markdown, tables, formatted text, Drive upload/download/share/search
+version: 1.4.0
+key_capabilities: read-with-images, read-ranges, create-from-markdown, insert-from-markdown, tables, formatted text, highlights, Drive upload/download/share/search
 when_to_use: Document content operations, formatted document creation from Markdown, tables, Drive file management, sharing files
 ---
 
@@ -16,9 +16,10 @@ Manage Google Docs documents and Google Drive files with comprehensive operation
 **Google Docs:**
 - Read document content and structure
 - Read document content WITH IMAGES (downloads inline images to disk)
+- Read paragraph ranges with Google Docs indices for annotation
 - Insert and append text
 - Find and replace text
-- Basic text formatting (bold, italic, underline)
+- Basic text formatting (bold, italic, underline, highlight)
 - Insert page breaks
 - Create new documents
 - Delete content ranges
@@ -84,6 +85,12 @@ This downloads all inline images from the document and saves them to `~/.google-
 ```bash
 scripts/docs_manager.rb structure <document_id>
 ```
+
+**Read paragraph ranges for annotation**:
+```bash
+scripts/docs_manager.rb read-ranges <document_id>
+```
+Returns ordinary body paragraphs and headings with Google Docs `start_index` and `end_index`. Empty paragraphs and tables are not included.
 
 **Output**:
 - Full text content with paragraphs
@@ -208,10 +215,41 @@ echo '{
 }' | scripts/docs_manager.rb format
 ```
 
+**Highlight text**:
+```bash
+echo '{
+  "document_id": "abc123",
+  "start_index": 100,
+  "end_index": 150,
+  "highlight": "yellow"
+}' | scripts/docs_manager.rb format
+```
+
+**Blue highlight**:
+```bash
+echo '{
+  "document_id": "abc123",
+  "start_index": 150,
+  "end_index": 200,
+  "highlight": "blue"
+}' | scripts/docs_manager.rb format
+```
+
+**Clear highlight**:
+```bash
+echo '{
+  "document_id": "abc123",
+  "start_index": 100,
+  "end_index": 200,
+  "highlight": false
+}' | scripts/docs_manager.rb format
+```
+
 **Formatting Options**:
 - `bold`: true/false
 - `italic`: true/false
 - `underline`: true/false
+- `highlight`: `yellow`, `blue`, `green`, `pink`, `gray`, or false/null to clear
 - All options are independent and can be combined
 
 ### 6. Page Breaks
@@ -385,6 +423,12 @@ echo '{
 }' | scripts/docs_manager.rb format
 ```
 
+### User Says: "Highlight the first paragraph yellow"
+```bash
+scripts/docs_manager.rb read-ranges abc123
+echo '{"document_id":"abc123","start_index":1,"end_index":50,"highlight":"yellow"}' | scripts/docs_manager.rb format
+```
+
 ## Understanding Document Index Positions
 
 **Index System**:
@@ -392,6 +436,7 @@ echo '{
 - Index 1 = start of document (after title)
 - Each character (including spaces and newlines) has an index
 - Use `read` to see current content and plan insertions
+- Use `read-ranges` to get exact paragraph start/end indices for annotations
 - Use `structure` to find heading positions
 
 **Finding Positions**:
@@ -690,12 +735,13 @@ ruby scripts/setup_auth.rb
 **Operations**:
 - `read`: View document content
 - `read-with-images`: View document content AND download inline images to disk
+- `read-ranges`: View ordinary body paragraph ranges for annotation
 - `structure`: Get document headings and structure
 - `insert`: Insert plain text at specific index
 - `insert-from-markdown`: Insert formatted markdown content
 - `append`: Append text to end
 - `replace`: Find and replace text
-- `format`: Apply text formatting (bold, italic, underline)
+- `format`: Apply text formatting (bold, italic, underline, highlight)
 - `page-break`: Insert page break
 - `create`: Create new document (plain text)
 - `create-from-markdown`: Create document with formatted markdown
@@ -817,6 +863,11 @@ scripts/docs_manager.rb read <document_id>
 scripts/docs_manager.rb read-with-images <document_id>
 ```
 
+**Read paragraph ranges**:
+```bash
+scripts/docs_manager.rb read-ranges <document_id>
+```
+
 **Create document from Markdown (RECOMMENDED)**:
 ```bash
 echo '{"title":"My Doc","markdown":"# Heading\n\nParagraph with **bold**."}' | scripts/docs_manager.rb create-from-markdown
@@ -850,6 +901,16 @@ echo '{"document_id":"abc123","find":"old","replace":"new"}' | scripts/docs_mana
 **Format text**:
 ```bash
 echo '{"document_id":"abc123","start_index":1,"end_index":50,"bold":true}' | scripts/docs_manager.rb format
+```
+
+**Highlight text**:
+```bash
+echo '{"document_id":"abc123","start_index":1,"end_index":50,"highlight":"yellow"}' | scripts/docs_manager.rb format
+```
+
+**Clear highlight**:
+```bash
+echo '{"document_id":"abc123","start_index":1,"end_index":50,"highlight":false}' | scripts/docs_manager.rb format
 ```
 
 **Get document structure**:
@@ -902,6 +963,7 @@ echo '{"document_id":"abc123","image_url":"https://example.com/image.png"}' | sc
 
 ## Version History
 
+- **1.4.0** (2026-06-08) - Added `read-ranges` and `format` highlight support for yellow, blue, green, pink, gray, and clearing highlights.
 - **1.3.0** (2026-04-30) - Added `read-with-images` command documentation: downloads inline images to `~/.google-docs-skill/doc_images/` with position data for correlation.
 - **1.2.0** (2025-12-25) - Added markdown support documentation: `create-from-markdown`, `insert-from-markdown`, `insert-table` commands. Supports headings, bold, italic, code, lists, checkboxes, tables, and horizontal rules.
 - **1.1.0** (2025-12-20) - Added Google Drive operations via drive_manager.rb: upload, download, search, list, share, move, copy, delete, folder management. Integrated with excalidraw-diagrams skill for diagram workflows.

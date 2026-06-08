@@ -7,6 +7,7 @@ Complete reference for all Google Docs operations available in the docs_manager.
 | Operation | Command | Input | Output |
 |-----------|---------|-------|--------|
 | Read | `read <document_id>` | CLI arg | Full document content |
+| Read Ranges | `read-ranges <document_id>` | CLI arg | Paragraph text with start/end indices |
 | Structure | `structure <document_id>` | CLI arg | Heading hierarchy |
 | Insert | `insert` | JSON stdin | Insert confirmation |
 | Append | `append` | JSON stdin | Append confirmation |
@@ -47,6 +48,45 @@ Complete reference for all Google Docs operations available in the docs_manager.
 **Example**:
 ```bash
 scripts/docs_manager.rb read 1abc-xyz-document-id-123
+```
+
+---
+
+## Read Paragraph Ranges
+
+**Command**: `read-ranges <document_id>`
+
+**Purpose**: Retrieve ordinary body paragraph text with Google Docs start/end indices for annotation
+
+**Input**: Document ID as CLI argument
+
+**Output**:
+```json
+{
+  "status": "success",
+  "operation": "read-ranges",
+  "document_id": "abc123",
+  "title": "Document Title",
+  "paragraphs": [
+    {
+      "start_index": 1,
+      "end_index": 24,
+      "text": "Paragraph text...\n",
+      "named_style_type": "NORMAL_TEXT"
+    }
+  ],
+  "tables_included": false
+}
+```
+
+**Behavior**:
+- Includes ordinary body paragraphs and headings.
+- Excludes empty paragraphs.
+- Tables are not included in this initial range output.
+
+**Example**:
+```bash
+scripts/docs_manager.rb read-ranges 1abc-xyz-document-id-123
 ```
 
 ---
@@ -294,7 +334,8 @@ echo '{
   "end_index": 50,
   "bold": true,
   "italic": false,
-  "underline": false
+  "underline": false,
+  "highlight": "yellow"
 }
 ```
 
@@ -305,6 +346,7 @@ echo '{
 - `bold` (optional): Apply bold formatting
 - `italic` (optional): Apply italic formatting
 - `underline` (optional): Apply underline formatting
+- `highlight` (optional): Apply `yellow`, `blue`, `green`, `pink`, or `gray`; use `false` or `null` to clear highlight
 
 **Output**:
 ```json
@@ -320,6 +362,7 @@ echo '{
 **Formatting Options**:
 - All options are independent
 - Can combine multiple styles
+- Missing `highlight` leaves existing background color unchanged
 - Applies to exact character range
 - Use read/structure to find positions
 
@@ -348,6 +391,30 @@ echo '{
   "start_index": 200,
   "end_index": 225,
   "underline": true
+}' | scripts/docs_manager.rb format
+
+# Apply yellow highlight
+echo '{
+  "document_id": "abc123",
+  "start_index": 100,
+  "end_index": 150,
+  "highlight": "yellow"
+}' | scripts/docs_manager.rb format
+
+# Apply blue highlight
+echo '{
+  "document_id": "abc123",
+  "start_index": 150,
+  "end_index": 200,
+  "highlight": "blue"
+}' | scripts/docs_manager.rb format
+
+# Clear highlight
+echo '{
+  "document_id": "abc123",
+  "start_index": 100,
+  "end_index": 200,
+  "highlight": false
 }' | scripts/docs_manager.rb format
 ```
 

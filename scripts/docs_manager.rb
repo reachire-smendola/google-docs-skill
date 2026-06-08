@@ -33,6 +33,14 @@ class DocsManager
   CREDENTIALS_PATH = File.join(CONFIG_DIR, 'client_secret.json')
   TOKEN_PATH = File.join(CONFIG_DIR, 'token.json')
 
+  HIGHLIGHT_COLORS = {
+    'yellow' => { red: 1.0, green: 0.95, blue: 0.45 },
+    'blue' => { red: 0.75, green: 0.88, blue: 1.0 },
+    'green' => { red: 0.78, green: 0.93, blue: 0.78 },
+    'pink' => { red: 1.0, green: 0.82, blue: 0.88 },
+    'gray' => { red: 0.88, green: 0.88, blue: 0.88 }
+  }.freeze
+
   # Exit codes
   EXIT_SUCCESS = 0
   EXIT_OPERATION_FAILED = 1
@@ -320,6 +328,53 @@ class DocsManager
     exit EXIT_OPERATION_FAILED
   end
 
+  # Read ordinary body paragraph ranges for annotation.
+  def read_ranges(document_id:)
+    document = @docs_service.get_document(document_id)
+
+    paragraphs = document.body.content.filter_map do |element|
+      next unless element.paragraph
+
+      text = extract_paragraph_text(element.paragraph)
+      next if text.strip.empty?
+
+      paragraph_data = {
+        start_index: element.start_index,
+        end_index: element.end_index,
+        text: text
+      }
+
+      style = element.paragraph.paragraph_style&.named_style_type
+      paragraph_data[:named_style_type] = style if style
+      paragraph_data
+    end
+
+    output_json({
+      status: 'success',
+      operation: 'read-ranges',
+      document_id: document.document_id,
+      title: document.title,
+      paragraphs: paragraphs,
+      tables_included: false
+    })
+  rescue Google::Apis::Error => e
+    output_json({
+      status: 'error',
+      error_code: 'API_ERROR',
+      operation: 'read-ranges',
+      message: "Google Docs API error: #{e.message}"
+    })
+    exit EXIT_API_ERROR
+  rescue StandardError => e
+    output_json({
+      status: 'error',
+      error_code: 'READ_RANGES_FAILED',
+      operation: 'read-ranges',
+      message: "Failed to read paragraph ranges: #{e.message}"
+    })
+    exit EXIT_OPERATION_FAILED
+  end
+
   # Insert text at specific index
   def insert_text(document_id:, text:, index: 1)
     requests = [
@@ -454,12 +509,25 @@ class DocsManager
     exit EXIT_OPERATION_FAILED
   end
 
-  # Format text (bold, italic, underline)
-  def format_text(document_id:, start_index:, end_index:, bold: nil, italic: nil, underline: nil)
+  # Format text (bold, italic, underline, highlight)
+  def format_text(document_id:, start_index:, end_index:, bold: nil, italic: nil, underline: nil, highlight: :missing)
     text_style = {}
     text_style[:bold] = bold unless bold.nil?
     text_style[:italic] = italic unless italic.nil?
     text_style[:underline] = underline unless underline.nil?
+
+    unless highlight == :missing
+      if highlight == false || highlight.nil?
+        text_style[:background_color] = nil
+      elsif highlight.is_a?(String)
+        color = HIGHLIGHT_COLORS[highlight.downcase]
+        raise ArgumentError, "Unknown highlight color: #{highlight}. Valid colors: #{HIGHLIGHT_COLORS.keys.join(', ')}" unless color
+
+        text_style[:background_color] = { color: { rgb_color: color } }
+      else
+        raise ArgumentError, 'highlight must be a color name, false, or null'
+      end
+    end
 
     requests = [
       {
@@ -469,7 +537,7 @@ class DocsManager
             end_index: end_index
           },
           text_style: text_style,
-          fields: text_style.keys.join(',')
+          fields: text_style.keys.map { |key| key == :background_color ? 'backgroundColor' : key.to_s }.join(',')
         }
       }
     ]
@@ -1324,17 +1392,19 @@ def usage
     Commands:
       auth <code>              Complete OAuth authorization with code
       read <document_id>       Read document content
+      read-ranges <document_id> Read paragraph text with start/end indices
       structure <document_id>  Get document structure (headings)
       insert                   Insert text at specific index (JSON via stdin)
       append                   Append text to end of document (JSON via stdin)
       replace                  Find and replace text (JSON via stdin)
-      format                   Format text (bold, italic, underline) (JSON via stdin)
+      format                   Format text (bold, italic, underline, highlight) (JSON via stdin)
       page-break               Insert page break (JSON via stdin)
       create                   Create new document (JSON via stdin)
       create-from-markdown     Create new document from markdown (JSON via stdin)
       insert-from-markdown     Insert formatted markdown into existing doc (JSON via stdin)
       delete                   Delete content range (JSON via stdin)
       insert-image             Insert inline image from URL (JSON via stdin)
+      insert-table             Insert table with optional data (JSON via stdin)
 
     JSON Input Formats:
 
@@ -1366,7 +1436,8 @@ def usage
           "end_index": 10,
           "bold": true,                 # Optional
           "italic": true,               # Optional
-          "underline": true             # Optional
+          "underline": true,            # Optional
+          "highlight": "yellow"         # Optional: yellow, blue, green, pink, gray, or false to clear
         }
 
       Page Break:
@@ -1395,6 +1466,9 @@ def usage
       # Read document
       #{File.basename($PROGRAM_NAME)} read 1abc-xyz-123
 
+      # Read paragraph ranges
+      #{File.basename($PROGRAM_NAME)} read-ranges 1abc-xyz-123
+
       # Get document structure
       #{File.basename($PROGRAM_NAME)} structure 1abc-xyz-123
 
@@ -1409,6 +1483,12 @@ def usage
 
       # Format text
       echo '{"document_id":"abc123","start_index":1,"end_index":10,"bold":true}' | #{File.basename($PROGRAM_NAME)} format
+
+      # Highlight text
+      echo '{"document_id":"abc123","start_index":1,"end_index":10,"highlight":"yellow"}' | #{File.basename($PROGRAM_NAME)} format
+
+      # Clear highlight
+      echo '{"document_id":"abc123","start_index":1,"end_index":10,"highlight":false}' | #{File.basename($PROGRAM_NAME)} format
 
       # Create new document
       echo '{"title":"My Document","content":"Hello World"}' | #{File.basename($PROGRAM_NAME)} create
@@ -1468,6 +1548,18 @@ if __FILE__ == $PROGRAM_NAME
     end
 
     manager.read_document(document_id: ARGV[1])
+
+  when 'read-ranges'
+    if ARGV.length < 2
+      puts JSON.pretty_generate({
+        status: 'error',
+        error_code: 'MISSING_DOCUMENT_ID',
+        message: 'Document ID required'
+      })
+      exit DocsManager::EXIT_INVALID_ARGS
+    end
+
+    manager.read_ranges(document_id: ARGV[1])
 
   when 'structure'
     if ARGV.length < 2
@@ -1565,7 +1657,8 @@ if __FILE__ == $PROGRAM_NAME
       end_index: input[:end_index],
       bold: input[:bold],
       italic: input[:italic],
-      underline: input[:underline]
+      underline: input[:underline],
+      highlight: input.key?(:highlight) ? input[:highlight] : :missing
     )
 
   when 'page-break'
@@ -1700,7 +1793,7 @@ if __FILE__ == $PROGRAM_NAME
       status: 'error',
       error_code: 'INVALID_COMMAND',
       message: "Unknown command: #{command}",
-      valid_commands: ['auth', 'read', 'read-with-images', 'structure', 'insert', 'append', 'replace', 'format', 'page-break', 'create', 'create-from-markdown', 'insert-from-markdown', 'delete', 'insert-image']
+      valid_commands: ['auth', 'read', 'read-ranges', 'read-with-images', 'structure', 'insert', 'append', 'replace', 'format', 'page-break', 'create', 'create-from-markdown', 'insert-from-markdown', 'delete', 'insert-image', 'insert-table']
     })
     usage
     exit DocsManager::EXIT_INVALID_ARGS
