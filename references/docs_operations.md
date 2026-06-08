@@ -335,7 +335,8 @@ echo '{
   "bold": true,
   "italic": false,
   "underline": false,
-  "highlight": "yellow"
+  "highlight": "yellow",
+  "color": "blue"
 }
 ```
 
@@ -347,6 +348,7 @@ echo '{
 - `italic` (optional): Apply italic formatting
 - `underline` (optional): Apply underline formatting
 - `highlight` (optional): Apply `yellow`, `blue`, `green`, `pink`, or `gray`; use `false` or `null` to clear highlight
+- `color` (optional): Apply text color `blue`, `green`, `red`, `orange`, or `gray`; use `false` or `null` to clear text color
 
 **Output**:
 ```json
@@ -363,6 +365,7 @@ echo '{
 - All options are independent
 - Can combine multiple styles
 - Missing `highlight` leaves existing background color unchanged
+- Missing `color` leaves existing text color unchanged
 - Applies to exact character range
 - Use read/structure to find positions
 
@@ -415,6 +418,30 @@ echo '{
   "start_index": 100,
   "end_index": 200,
   "highlight": false
+}' | scripts/docs_manager.rb format
+
+# Apply blue text color
+echo '{
+  "document_id": "abc123",
+  "start_index": 200,
+  "end_index": 240,
+  "color": "blue"
+}' | scripts/docs_manager.rb format
+
+# Apply red text color
+echo '{
+  "document_id": "abc123",
+  "start_index": 240,
+  "end_index": 280,
+  "color": "red"
+}' | scripts/docs_manager.rb format
+
+# Clear text color
+echo '{
+  "document_id": "abc123",
+  "start_index": 200,
+  "end_index": 280,
+  "color": null
 }' | scripts/docs_manager.rb format
 ```
 
