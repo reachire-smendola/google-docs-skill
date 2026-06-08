@@ -41,6 +41,14 @@ class DocsManager
     'gray' => { red: 0.88, green: 0.88, blue: 0.88 }
   }.freeze
 
+  TEXT_COLORS = {
+    'blue' => { red: 0.1, green: 0.33, blue: 0.75 },
+    'green' => { red: 0.12, green: 0.5, blue: 0.2 },
+    'red' => { red: 0.8, green: 0.1, blue: 0.1 },
+    'orange' => { red: 0.9, green: 0.45, blue: 0.05 },
+    'gray' => { red: 0.35, green: 0.35, blue: 0.35 }
+  }.freeze
+
   # Exit codes
   EXIT_SUCCESS = 0
   EXIT_OPERATION_FAILED = 1
@@ -509,8 +517,9 @@ class DocsManager
     exit EXIT_OPERATION_FAILED
   end
 
-  # Format text (bold, italic, underline, highlight)
-  def format_text(document_id:, start_index:, end_index:, bold: nil, italic: nil, underline: nil, highlight: :missing)
+  # Format text (bold, italic, underline, highlight, color)
+  def format_text(document_id:, start_index:, end_index:, bold: nil, italic: nil, underline: nil,
+                  highlight: :missing, color: :missing)
     text_style = {}
     text_style[:bold] = bold unless bold.nil?
     text_style[:italic] = italic unless italic.nil?
@@ -521,11 +530,28 @@ class DocsManager
         text_style[:background_color] = nil
       elsif highlight.is_a?(String)
         color = HIGHLIGHT_COLORS[highlight.downcase]
-        raise ArgumentError, "Unknown highlight color: #{highlight}. Valid colors: #{HIGHLIGHT_COLORS.keys.join(', ')}" unless color
+        unless color
+          raise ArgumentError, "Unknown highlight color: #{highlight}. Valid colors: #{HIGHLIGHT_COLORS.keys.join(', ')}"
+        end
 
         text_style[:background_color] = { color: { rgb_color: color } }
       else
         raise ArgumentError, 'highlight must be a color name, false, or null'
+      end
+    end
+
+    unless color == :missing
+      if color == false || color.nil?
+        text_style[:foreground_color] = nil
+      elsif color.is_a?(String)
+        rgb_color = TEXT_COLORS[color.downcase]
+        unless rgb_color
+          raise ArgumentError, "Unknown text color: #{color}. Valid colors: #{TEXT_COLORS.keys.join(', ')}"
+        end
+
+        text_style[:foreground_color] = { color: { rgb_color: rgb_color } }
+      else
+        raise ArgumentError, 'color must be a color name, false, or null'
       end
     end
 
@@ -537,7 +563,7 @@ class DocsManager
             end_index: end_index
           },
           text_style: text_style,
-          fields: text_style.keys.map { |key| key == :background_color ? 'backgroundColor' : key.to_s }.join(',')
+          fields: text_style.keys.map { |key| text_style_field_name(key) }.join(',')
         }
       }
     ]
@@ -1316,6 +1342,17 @@ class DocsManager
     end
   end
 
+  def text_style_field_name(key)
+    case key
+    when :background_color
+      'backgroundColor'
+    when :foreground_color
+      'foregroundColor'
+    else
+      key.to_s
+    end
+  end
+
   # Extract text content from document body
   def extract_text_content(content_elements)
     text = []
@@ -1397,7 +1434,7 @@ def usage
       insert                   Insert text at specific index (JSON via stdin)
       append                   Append text to end of document (JSON via stdin)
       replace                  Find and replace text (JSON via stdin)
-      format                   Format text (bold, italic, underline, highlight) (JSON via stdin)
+      format                   Format text (bold, italic, underline, highlight, color) (JSON via stdin)
       page-break               Insert page break (JSON via stdin)
       create                   Create new document (JSON via stdin)
       create-from-markdown     Create new document from markdown (JSON via stdin)
@@ -1437,7 +1474,8 @@ def usage
           "bold": true,                 # Optional
           "italic": true,               # Optional
           "underline": true,            # Optional
-          "highlight": "yellow"         # Optional: yellow, blue, green, pink, gray, or false to clear
+          "highlight": "yellow",        # Optional: yellow, blue, green, pink, gray, or false/null to clear
+          "color": "blue"               # Optional: blue, green, red, orange, gray, or false/null to clear
         }
 
       Page Break:
@@ -1486,6 +1524,12 @@ def usage
 
       # Highlight text
       echo '{"document_id":"abc123","start_index":1,"end_index":10,"highlight":"yellow"}' | #{File.basename($PROGRAM_NAME)} format
+
+      # Color text
+      echo '{"document_id":"abc123","start_index":1,"end_index":10,"color":"blue"}' | #{File.basename($PROGRAM_NAME)} format
+
+      # Clear text color
+      echo '{"document_id":"abc123","start_index":1,"end_index":10,"color":null}' | #{File.basename($PROGRAM_NAME)} format
 
       # Clear highlight
       echo '{"document_id":"abc123","start_index":1,"end_index":10,"highlight":false}' | #{File.basename($PROGRAM_NAME)} format
@@ -1658,7 +1702,8 @@ if __FILE__ == $PROGRAM_NAME
       bold: input[:bold],
       italic: input[:italic],
       underline: input[:underline],
-      highlight: input.key?(:highlight) ? input[:highlight] : :missing
+      highlight: input.key?(:highlight) ? input[:highlight] : :missing,
+      color: input.key?(:color) ? input[:color] : :missing
     )
 
   when 'page-break'
