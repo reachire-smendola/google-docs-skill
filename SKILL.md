@@ -2,8 +2,8 @@
 name: google-docs
 description: Manage Google Docs and Google Drive with full document operations and file management. Includes Markdown support for creating formatted documents with headings, bold, italic, lists, tables, and checkboxes. Also supports Drive operations (upload, download, share, search).
 category: productivity
-version: 1.2.0
-key_capabilities: read-with-images, create-from-markdown, insert-from-markdown, tables, formatted text, Drive upload/download/share/search
+version: 1.4.0
+key_capabilities: read-with-images, read-ranges, create-from-markdown, insert-from-markdown, tables, formatted text, highlights, text colors, Drive upload/download/share/search
 when_to_use: Document content operations, formatted document creation from Markdown, tables, Drive file management, sharing files
 ---
 
@@ -16,9 +16,10 @@ Manage Google Docs documents and Google Drive files with comprehensive operation
 **Google Docs:**
 - Read document content and structure
 - Read document content WITH IMAGES (downloads inline images to disk)
+- Read paragraph ranges with Google Docs indices for annotation
 - Insert and append text
 - Find and replace text
-- Basic text formatting (bold, italic, underline)
+- Basic text formatting (bold, italic, underline, highlight, text color)
 - Insert page breaks
 - Create new documents
 - Delete content ranges
@@ -78,12 +79,18 @@ scripts/docs_manager.rb read <document_id>
 ```bash
 scripts/docs_manager.rb read-with-images <document_id>
 ```
-This downloads all inline images from the document and saves them to `~/.claude/.google/doc_images/`. Returns image paths and positions in the document for correlation with text.
+This downloads all inline images from the document and saves them to `~/.google-docs-skill/doc_images/`. Returns image paths and positions in the document for correlation with text.
 
 **Get document structure (headings)**:
 ```bash
 scripts/docs_manager.rb structure <document_id>
 ```
+
+**Read paragraph ranges for annotation**:
+```bash
+scripts/docs_manager.rb read-ranges <document_id>
+```
+Returns ordinary body paragraphs and headings with Google Docs `start_index` and `end_index`. Empty paragraphs and tables are not included.
 
 **Output**:
 - Full text content with paragraphs
@@ -208,10 +215,62 @@ echo '{
 }' | scripts/docs_manager.rb format
 ```
 
+**Highlight text**:
+```bash
+echo '{
+  "document_id": "abc123",
+  "start_index": 100,
+  "end_index": 150,
+  "highlight": "yellow"
+}' | scripts/docs_manager.rb format
+```
+
+**Blue highlight**:
+```bash
+echo '{
+  "document_id": "abc123",
+  "start_index": 150,
+  "end_index": 200,
+  "highlight": "blue"
+}' | scripts/docs_manager.rb format
+```
+
+**Clear highlight**:
+```bash
+echo '{
+  "document_id": "abc123",
+  "start_index": 100,
+  "end_index": 200,
+  "highlight": false
+}' | scripts/docs_manager.rb format
+```
+
+**Color text**:
+```bash
+echo '{
+  "document_id": "abc123",
+  "start_index": 200,
+  "end_index": 240,
+  "color": "blue"
+}' | scripts/docs_manager.rb format
+```
+
+**Clear text color**:
+```bash
+echo '{
+  "document_id": "abc123",
+  "start_index": 200,
+  "end_index": 240,
+  "color": null
+}' | scripts/docs_manager.rb format
+```
+
 **Formatting Options**:
 - `bold`: true/false
 - `italic`: true/false
 - `underline`: true/false
+- `highlight`: `yellow`, `blue`, `green`, `pink`, `gray`, or false/null to clear
+- `color`: `blue`, `green`, `red`, `orange`, `gray`, or false/null to clear
 - All options are independent and can be combined
 
 ### 6. Page Breaks
@@ -348,7 +407,7 @@ scripts/docs_manager.rb read abc123
 ```bash
 scripts/docs_manager.rb read-with-images abc123
 ```
-Use this when the user wants to see images embedded in the document. Images are downloaded to `~/.claude/.google/doc_images/`.
+Use this when the user wants to see images embedded in the document. Images are downloaded to `~/.google-docs-skill/doc_images/`.
 
 ### User Says: "Create a new document called 'Meeting Notes' with the text 'Attendees: John, Sarah'"
 ```bash
@@ -385,6 +444,12 @@ echo '{
 }' | scripts/docs_manager.rb format
 ```
 
+### User Says: "Highlight the first paragraph yellow"
+```bash
+scripts/docs_manager.rb read-ranges abc123
+echo '{"document_id":"abc123","start_index":1,"end_index":50,"highlight":"yellow"}' | scripts/docs_manager.rb format
+```
+
 ## Understanding Document Index Positions
 
 **Index System**:
@@ -392,6 +457,7 @@ echo '{
 - Index 1 = start of document (after title)
 - Each character (including spaces and newlines) has an index
 - Use `read` to see current content and plan insertions
+- Use `read-ranges` to get exact paragraph start/end indices for annotations
 - Use `structure` to find heading positions
 
 **Finding Positions**:
@@ -558,24 +624,122 @@ For creating and managing Excalidraw diagrams, see the `excalidraw-diagrams` ski
 - Getting shareable edit URLs for Excalidraw web
 - Round-trip editing between AI and human
 
+## Prerequisites
+
+Before running any command, verify the environment is ready. **Do not use `bundle check` or `bundle exec`** — they are not needed at runtime.
+
+### 1. Check Ruby
+
+```bash
+ruby --version
+```
+
+Expected: Ruby 3.0 or newer.
+
+### 2. Check vendored gems
+
+Gems are vendored into `vendor/bundle/` and load automatically via `scripts/_bootstrap.rb`. Verify they exist:
+
+```bash
+ls vendor/bundle/ruby/*/gems/google-apis-docs_v1-*/lib
+```
+
+If this fails (directory not found), gems were never installed. Set them up once:
+
+```bash
+gem install bundler && bundle install
+```
+
+After that one-time setup, all commands work with plain `ruby` — no `bundle` needed.
+
+### 3. Check OAuth credentials
+
+```bash
+ls ~/.google-docs-skill/client_secret.json
+```
+
+If this file doesn't exist, run the setup wizard: `ruby scripts/setup_auth.rb`. All commands will fail with a clear error until credentials are configured.
+
 ## Authentication Setup
 
-**Shared with Other Google Skills**:
-- Uses same OAuth credentials and token
-- Located at: `~/.claude/.google/client_secret.json` and `~/.claude/.google/token.json`
-- Shares token with email, calendar, contacts, drive, and sheets skills
-- Requires Documents, Drive, Sheets, Calendar, Contacts, and Gmail API scopes
+This skill uses OAuth 2.0 to access Google Docs and Drive. Credentials **must** be configured before using any command — the skill will not operate without them, and will direct you to set them up.
 
-**First Time Setup**:
-1. Run any docs operation
-2. Script will prompt for authorization URL
-3. Visit URL and authorize all Google services
-4. Enter authorization code when prompted
-5. Token stored for all Google skills
+The quickest way to get set up is the guided wizard:
+
+```bash
+ruby scripts/setup_auth.rb
+```
+
+This walks you through creating OAuth credentials in Google Cloud Console, then runs the auth flow.
+
+Alternatively, follow the manual steps below.
+
+### Step 1: Create a Google Cloud Project
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project (or select an existing one)
+3. Note the project name — you'll use it in the consent screen
+
+### Step 2: Enable Required APIs
+
+1. Navigate to **APIs & Services > Library**
+2. Search for and enable each of these APIs:
+   - **Google Docs API**
+   - **Google Drive API**
+   - **Google Sheets API**
+   - **Google Calendar API**
+   - **People API**
+   - **Gmail API**
+
+### Step 3: Configure OAuth Consent Screen
+
+1. Go to **APIs & Services > OAuth consent screen**
+2. Choose **External** user type (unless you have a Google Workspace organization)
+3. Fill in the required fields:
+   - **App name**: e.g. "Google Docs CLI"
+   - **User support email**: your email
+   - **Developer contact email**: your email
+4. Click **Save and Continue** through Scopes and Test Users screens (no changes needed)
+
+### Step 4: Create OAuth Client Credentials
+
+1. Go to **APIs & Services > Credentials**
+2. Click **+ Create Credentials > OAuth client ID**
+3. Choose **Desktop application** as the Application type
+4. Give it a name (e.g. "CLI Desktop Client")
+5. Click **Create**
+
+### Step 5: Save Credentials
+
+1. In the dialog that appears, click **Download JSON**
+2. Save the downloaded file as:
+   ```
+   ~/.google-docs-skill/client_secret.json
+   ```
+
+### Step 6: Run the OAuth Flow
+
+```bash
+ruby scripts/docs_manager.rb auth
+```
+
+- A URL will be printed — open it in your browser
+- Sign in to Google and authorize all requested permissions
+- The callback will be handled automatically on localhost:3000
+- On success, the token is saved to `~/.google-docs-skill/token.json`
+
+For a guided walkthrough, run the setup helper instead:
+```bash
+ruby scripts/setup_auth.rb
+```
+
+**Shared with Other Google Skills**:
+- Uses same OAuth credentials and token at `~/.google-docs-skill/`
+- Shares token with email, calendar, contacts, drive, and sheets skills
 
 **Re-authorization**:
 - Token automatically refreshes when expired
-- If refresh fails, re-run authorization flow
+- If refresh fails, re-run `docs_manager.rb auth`
 - All Google skills will work after single re-auth
 
 ## Bundled Resources
@@ -592,12 +756,13 @@ For creating and managing Excalidraw diagrams, see the `excalidraw-diagrams` ski
 **Operations**:
 - `read`: View document content
 - `read-with-images`: View document content AND download inline images to disk
+- `read-ranges`: View ordinary body paragraph ranges for annotation
 - `structure`: Get document headings and structure
 - `insert`: Insert plain text at specific index
 - `insert-from-markdown`: Insert formatted markdown content
 - `append`: Append text to end
 - `replace`: Find and replace text
-- `format`: Apply text formatting (bold, italic, underline)
+- `format`: Apply text formatting (bold, italic, underline, highlight, text color)
 - `page-break`: Insert page break
 - `create`: Create new document (plain text)
 - `create-from-markdown`: Create document with formatted markdown
@@ -714,9 +879,14 @@ For creating and managing Excalidraw diagrams, see the `excalidraw-diagrams` ski
 scripts/docs_manager.rb read <document_id>
 ```
 
-**Read document WITH images** (downloads inline images to `~/.claude/.google/doc_images/`):
+**Read document WITH images** (downloads inline images to `~/.google-docs-skill/doc_images/`):
 ```bash
 scripts/docs_manager.rb read-with-images <document_id>
+```
+
+**Read paragraph ranges**:
+```bash
+scripts/docs_manager.rb read-ranges <document_id>
 ```
 
 **Create document from Markdown (RECOMMENDED)**:
@@ -752,6 +922,26 @@ echo '{"document_id":"abc123","find":"old","replace":"new"}' | scripts/docs_mana
 **Format text**:
 ```bash
 echo '{"document_id":"abc123","start_index":1,"end_index":50,"bold":true}' | scripts/docs_manager.rb format
+```
+
+**Highlight text**:
+```bash
+echo '{"document_id":"abc123","start_index":1,"end_index":50,"highlight":"yellow"}' | scripts/docs_manager.rb format
+```
+
+**Color text**:
+```bash
+echo '{"document_id":"abc123","start_index":1,"end_index":50,"color":"blue"}' | scripts/docs_manager.rb format
+```
+
+**Clear highlight**:
+```bash
+echo '{"document_id":"abc123","start_index":1,"end_index":50,"highlight":false}' | scripts/docs_manager.rb format
+```
+
+**Clear text color**:
+```bash
+echo '{"document_id":"abc123","start_index":1,"end_index":50,"color":null}' | scripts/docs_manager.rb format
 ```
 
 **Get document structure**:
@@ -804,11 +994,12 @@ echo '{"document_id":"abc123","image_url":"https://example.com/image.png"}' | sc
 
 ## Version History
 
-- **1.3.0** (2026-04-30) - Added `read-with-images` command documentation: downloads inline images to `~/.claude/.google/doc_images/` with position data for correlation.
+- **1.4.0** (2026-06-08) - Added `read-ranges` and `format` highlight/text color support, including clearing highlights and text colors.
+- **1.3.0** (2026-04-30) - Added `read-with-images` command documentation: downloads inline images to `~/.google-docs-skill/doc_images/` with position data for correlation.
 - **1.2.0** (2025-12-25) - Added markdown support documentation: `create-from-markdown`, `insert-from-markdown`, `insert-table` commands. Supports headings, bold, italic, code, lists, checkboxes, tables, and horizontal rules.
 - **1.1.0** (2025-12-20) - Added Google Drive operations via drive_manager.rb: upload, download, search, list, share, move, copy, delete, folder management. Integrated with excalidraw-diagrams skill for diagram workflows.
 - **1.0.0** (2025-11-10) - Initial Google Docs skill with full document operations: read, create, insert, append, replace, format, page breaks, structure analysis. Shared OAuth token with email, calendar, contacts, drive, and sheets skills.
 
 ---
 
-**Dependencies**: Ruby with `google-apis-docs_v1`, `google-apis-drive_v3`, `googleauth` gems (shared with other Google skills)
+**Dependencies**: See `Gemfile`. Vendored gems load automatically via `scripts/_bootstrap.rb`. For first-time setup: `gem install bundler && bundle install`.

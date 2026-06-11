@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require_relative '_bootstrap'
+
 require 'google/apis/docs_v1'
 require 'google/apis/drive_v3'
 require 'google/apis/sheets_v4'
@@ -11,6 +13,8 @@ require 'googleauth/stores/file_token_store'
 require 'fileutils'
 require 'json'
 require 'webrick'
+require 'socket'
+require 'ansi/code'
 
 # Google Docs Manager - Google CLI Integration for Document Operations
 # Version: 1.0.0
@@ -24,8 +28,26 @@ class DocsManager
   CONTACTS_SCOPE = Google::Apis::PeopleV1::AUTH_CONTACTS
   GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
 
-  CREDENTIALS_PATH = File.join(Dir.home, '.claude', '.google', 'client_secret.json')
-  TOKEN_PATH = File.join(Dir.home, '.claude', '.google', 'token.json')
+  CONFIG_DIR = ENV['GOOGLE_SKILL_CONFIG_DIR'] || File.join(Dir.home, '.google-docs-skill')
+  FileUtils.mkdir_p(CONFIG_DIR)
+  CREDENTIALS_PATH = File.join(CONFIG_DIR, 'client_secret.json')
+  TOKEN_PATH = File.join(CONFIG_DIR, 'token.json')
+
+  HIGHLIGHT_COLORS = {
+    'yellow' => { red: 1.0, green: 0.95, blue: 0.45 },
+    'blue' => { red: 0.75, green: 0.88, blue: 1.0 },
+    'green' => { red: 0.78, green: 0.93, blue: 0.78 },
+    'pink' => { red: 1.0, green: 0.82, blue: 0.88 },
+    'gray' => { red: 0.88, green: 0.88, blue: 0.88 }
+  }.freeze
+
+  TEXT_COLORS = {
+    'blue' => { red: 0.1, green: 0.33, blue: 0.75 },
+    'green' => { red: 0.12, green: 0.5, blue: 0.2 },
+    'red' => { red: 0.8, green: 0.1, blue: 0.1 },
+    'orange' => { red: 0.9, green: 0.45, blue: 0.05 },
+    'gray' => { red: 0.35, green: 0.35, blue: 0.35 }
+  }.freeze
 
   # Exit codes
   EXIT_SUCCESS = 0
@@ -36,11 +58,11 @@ class DocsManager
 
   def initialize
     @docs_service = Google::Apis::DocsV1::DocsService.new
-    @docs_service.client_options.application_name = 'Claude Docs Skill'
+    @docs_service.client_options.application_name = 'Google Docs Skill'
     @docs_service.authorization = authorize
 
     @drive_service = Google::Apis::DriveV3::DriveService.new
-    @drive_service.client_options.application_name = 'Claude Docs Skill'
+    @drive_service.client_options.application_name = 'Google Docs Skill'
     @drive_service.authorization = authorize
   end
 
@@ -69,10 +91,20 @@ class DocsManager
     credentials
   end
 
+  def find_free_port(start: 3000)
+    (start..start + 20).each do |port|
+      TCPServer.new('127.0.0.1', port).close
+      return port
+    rescue Errno::EADDRINUSE
+      next
+    end
+    raise 'No free port found in range 3000..3020'
+  end
+
   # Run OAuth flow using localhost redirect (replaces deprecated OOB flow).
   # Opens a temporary WEBrick server to catch the callback, then stores the token.
   def run_auth_flow(authorizer)
-    port        = 3000
+    port        = find_free_port
     redirect    = "http://localhost:#{port}"
     url         = authorizer.get_authorization_url(base_url: redirect)
     auth_code   = nil
@@ -96,7 +128,7 @@ class DocsManager
 
     Thread.new { server.start }
 
-    $stderr.puts "\nOpen this URL to authorize:\n\n  #{url}\n\n"
+    $stderr.puts "\nOpen this URL to authorize:\n\n  #{ANSI.blue { ANSI.underline { url } }}\n\n"
     $stderr.flush
 
     timeout = 180
@@ -120,6 +152,8 @@ class DocsManager
       message: 'Authorization complete. Token stored successfully.',
       token_path: TOKEN_PATH
     })
+
+    puts "\nAuthorization successful — you can now use all Google Docs skill commands."
   rescue StandardError => e
     output_json({ status: 'error', error_code: 'AUTH_FAILED', message: "Authorization failed: #{e.message}" })
     exit EXIT_AUTH_ERROR
@@ -196,7 +230,7 @@ class DocsManager
               else '.jpg'
               end
 
-        img_dir = File.join(Dir.home, '.claude', '.google', 'doc_images')
+        img_dir = File.join(CONFIG_DIR, 'doc_images')
         FileUtils.mkdir_p(img_dir)
         img_path = File.join(img_dir, "#{document_id}_#{object_id}#{ext}")
         File.binwrite(img_path, response.body)
@@ -298,6 +332,53 @@ class DocsManager
       error_code: 'STRUCTURE_FAILED',
       operation: 'structure',
       message: "Failed to get document structure: #{e.message}"
+    })
+    exit EXIT_OPERATION_FAILED
+  end
+
+  # Read ordinary body paragraph ranges for annotation.
+  def read_ranges(document_id:)
+    document = @docs_service.get_document(document_id)
+
+    paragraphs = document.body.content.filter_map do |element|
+      next unless element.paragraph
+
+      text = extract_paragraph_text(element.paragraph)
+      next if text.strip.empty?
+
+      paragraph_data = {
+        start_index: element.start_index,
+        end_index: element.end_index,
+        text: text
+      }
+
+      style = element.paragraph.paragraph_style&.named_style_type
+      paragraph_data[:named_style_type] = style if style
+      paragraph_data
+    end
+
+    output_json({
+      status: 'success',
+      operation: 'read-ranges',
+      document_id: document.document_id,
+      title: document.title,
+      paragraphs: paragraphs,
+      tables_included: false
+    })
+  rescue Google::Apis::Error => e
+    output_json({
+      status: 'error',
+      error_code: 'API_ERROR',
+      operation: 'read-ranges',
+      message: "Google Docs API error: #{e.message}"
+    })
+    exit EXIT_API_ERROR
+  rescue StandardError => e
+    output_json({
+      status: 'error',
+      error_code: 'READ_RANGES_FAILED',
+      operation: 'read-ranges',
+      message: "Failed to read paragraph ranges: #{e.message}"
     })
     exit EXIT_OPERATION_FAILED
   end
@@ -436,12 +517,43 @@ class DocsManager
     exit EXIT_OPERATION_FAILED
   end
 
-  # Format text (bold, italic, underline)
-  def format_text(document_id:, start_index:, end_index:, bold: nil, italic: nil, underline: nil)
+  # Format text (bold, italic, underline, highlight, color)
+  def format_text(document_id:, start_index:, end_index:, bold: nil, italic: nil, underline: nil,
+                  highlight: :missing, color: :missing)
     text_style = {}
     text_style[:bold] = bold unless bold.nil?
     text_style[:italic] = italic unless italic.nil?
     text_style[:underline] = underline unless underline.nil?
+
+    unless highlight == :missing
+      if highlight == false || highlight.nil?
+        text_style[:background_color] = nil
+      elsif highlight.is_a?(String)
+        color = HIGHLIGHT_COLORS[highlight.downcase]
+        unless color
+          raise ArgumentError, "Unknown highlight color: #{highlight}. Valid colors: #{HIGHLIGHT_COLORS.keys.join(', ')}"
+        end
+
+        text_style[:background_color] = { color: { rgb_color: color } }
+      else
+        raise ArgumentError, 'highlight must be a color name, false, or null'
+      end
+    end
+
+    unless color == :missing
+      if color == false || color.nil?
+        text_style[:foreground_color] = nil
+      elsif color.is_a?(String)
+        rgb_color = TEXT_COLORS[color.downcase]
+        unless rgb_color
+          raise ArgumentError, "Unknown text color: #{color}. Valid colors: #{TEXT_COLORS.keys.join(', ')}"
+        end
+
+        text_style[:foreground_color] = { color: { rgb_color: rgb_color } }
+      else
+        raise ArgumentError, 'color must be a color name, false, or null'
+      end
+    end
 
     requests = [
       {
@@ -451,7 +563,7 @@ class DocsManager
             end_index: end_index
           },
           text_style: text_style,
-          fields: text_style.keys.join(',')
+          fields: text_style.keys.map { |key| text_style_field_name(key) }.join(',')
         }
       }
     ]
@@ -1230,6 +1342,17 @@ class DocsManager
     end
   end
 
+  def text_style_field_name(key)
+    case key
+    when :background_color
+      'backgroundColor'
+    when :foreground_color
+      'foregroundColor'
+    else
+      key.to_s
+    end
+  end
+
   # Extract text content from document body
   def extract_text_content(content_elements)
     text = []
@@ -1268,6 +1391,30 @@ class DocsManager
   def output_json(data)
     puts JSON.pretty_generate(data)
   end
+
+  # Check if OAuth credentials are configured
+  def self.credentials_configured?
+    File.exist?(CREDENTIALS_PATH)
+  end
+
+  def self.output_json_static(data)
+    puts JSON.pretty_generate(data)
+  end
+
+  # Auth error message when credentials are missing — tells agent/user to initiate OAuth setup
+  def self.missing_credentials_error
+    output_json_static({
+      status: 'error',
+      error_code: 'MISSING_CREDENTIALS',
+      message: 'OAuth not configured. This skill requires Google OAuth credentials.',
+      expected_path: CREDENTIALS_PATH,
+      action_required: [
+        'Step 1: Run ruby scripts/setup_auth.rb to create OAuth credentials',
+        'Step 2: Run ruby scripts/docs_manager.rb auth to complete authorization'
+      ]
+    })
+    exit EXIT_AUTH_ERROR
+  end
 end
 
 # CLI Interface
@@ -1282,17 +1429,19 @@ def usage
     Commands:
       auth <code>              Complete OAuth authorization with code
       read <document_id>       Read document content
+      read-ranges <document_id> Read paragraph text with start/end indices
       structure <document_id>  Get document structure (headings)
       insert                   Insert text at specific index (JSON via stdin)
       append                   Append text to end of document (JSON via stdin)
       replace                  Find and replace text (JSON via stdin)
-      format                   Format text (bold, italic, underline) (JSON via stdin)
+      format                   Format text (bold, italic, underline, highlight, color) (JSON via stdin)
       page-break               Insert page break (JSON via stdin)
       create                   Create new document (JSON via stdin)
       create-from-markdown     Create new document from markdown (JSON via stdin)
       insert-from-markdown     Insert formatted markdown into existing doc (JSON via stdin)
       delete                   Delete content range (JSON via stdin)
       insert-image             Insert inline image from URL (JSON via stdin)
+      insert-table             Insert table with optional data (JSON via stdin)
 
     JSON Input Formats:
 
@@ -1324,7 +1473,9 @@ def usage
           "end_index": 10,
           "bold": true,                 # Optional
           "italic": true,               # Optional
-          "underline": true             # Optional
+          "underline": true,            # Optional
+          "highlight": "yellow",        # Optional: yellow, blue, green, pink, gray, or false/null to clear
+          "color": "blue"               # Optional: blue, green, red, orange, gray, or false/null to clear
         }
 
       Page Break:
@@ -1353,6 +1504,9 @@ def usage
       # Read document
       #{File.basename($PROGRAM_NAME)} read 1abc-xyz-123
 
+      # Read paragraph ranges
+      #{File.basename($PROGRAM_NAME)} read-ranges 1abc-xyz-123
+
       # Get document structure
       #{File.basename($PROGRAM_NAME)} structure 1abc-xyz-123
 
@@ -1367,6 +1521,18 @@ def usage
 
       # Format text
       echo '{"document_id":"abc123","start_index":1,"end_index":10,"bold":true}' | #{File.basename($PROGRAM_NAME)} format
+
+      # Highlight text
+      echo '{"document_id":"abc123","start_index":1,"end_index":10,"highlight":"yellow"}' | #{File.basename($PROGRAM_NAME)} format
+
+      # Color text
+      echo '{"document_id":"abc123","start_index":1,"end_index":10,"color":"blue"}' | #{File.basename($PROGRAM_NAME)} format
+
+      # Clear text color
+      echo '{"document_id":"abc123","start_index":1,"end_index":10,"color":null}' | #{File.basename($PROGRAM_NAME)} format
+
+      # Clear highlight
+      echo '{"document_id":"abc123","start_index":1,"end_index":10,"highlight":false}' | #{File.basename($PROGRAM_NAME)} format
 
       # Create new document
       echo '{"title":"My Document","content":"Hello World"}' | #{File.basename($PROGRAM_NAME)} create
@@ -1391,6 +1557,7 @@ if __FILE__ == $PROGRAM_NAME
 
   # Handle auth command separately (doesn't require initialized service)
   if command == 'auth'
+    DocsManager.missing_credentials_error unless DocsManager.credentials_configured?
     temp_manager = DocsManager.allocate
     client_id    = Google::Auth::ClientId.from_file(DocsManager::CREDENTIALS_PATH)
     token_store  = Google::Auth::Stores::FileTokenStore.new(file: DocsManager::TOKEN_PATH)
@@ -1404,7 +1571,12 @@ if __FILE__ == $PROGRAM_NAME
     exit DocsManager::EXIT_SUCCESS
   end
 
-  # For all other commands, create manager (which requires authorization)
+  # All other commands require OAuth credentials
+  unless DocsManager.credentials_configured?
+    DocsManager.missing_credentials_error
+  end
+
+  # Create manager (which requires authorization)
   manager = DocsManager.new
 
   case command
@@ -1420,6 +1592,18 @@ if __FILE__ == $PROGRAM_NAME
     end
 
     manager.read_document(document_id: ARGV[1])
+
+  when 'read-ranges'
+    if ARGV.length < 2
+      puts JSON.pretty_generate({
+        status: 'error',
+        error_code: 'MISSING_DOCUMENT_ID',
+        message: 'Document ID required'
+      })
+      exit DocsManager::EXIT_INVALID_ARGS
+    end
+
+    manager.read_ranges(document_id: ARGV[1])
 
   when 'structure'
     if ARGV.length < 2
@@ -1517,7 +1701,9 @@ if __FILE__ == $PROGRAM_NAME
       end_index: input[:end_index],
       bold: input[:bold],
       italic: input[:italic],
-      underline: input[:underline]
+      underline: input[:underline],
+      highlight: input.key?(:highlight) ? input[:highlight] : :missing,
+      color: input.key?(:color) ? input[:color] : :missing
     )
 
   when 'page-break'
@@ -1652,7 +1838,7 @@ if __FILE__ == $PROGRAM_NAME
       status: 'error',
       error_code: 'INVALID_COMMAND',
       message: "Unknown command: #{command}",
-      valid_commands: ['auth', 'read', 'read-with-images', 'structure', 'insert', 'append', 'replace', 'format', 'page-break', 'create', 'create-from-markdown', 'insert-from-markdown', 'delete', 'insert-image']
+      valid_commands: ['auth', 'read', 'read-ranges', 'read-with-images', 'structure', 'insert', 'append', 'replace', 'format', 'page-break', 'create', 'create-from-markdown', 'insert-from-markdown', 'delete', 'insert-image', 'insert-table']
     })
     usage
     exit DocsManager::EXIT_INVALID_ARGS
