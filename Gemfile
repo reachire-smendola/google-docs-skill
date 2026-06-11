@@ -1,0 +1,10 @@
+source 'https://rubygems.org'
+
+gem 'google-apis-docs_v1'
+gem 'google-apis-drive_v3'
+gem 'google-apis-sheets_v4'
+gem 'google-apis-calendar_v3'
+gem 'google-apis-people_v1'
+gem 'googleauth'
+gem 'webrick'
+gem 'ansi'
