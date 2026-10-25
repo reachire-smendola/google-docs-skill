@@ -1,5 +1,3 @@
 vendor/
 .bundle/*
 !.bundle/config
-config.bat
-node_modules
